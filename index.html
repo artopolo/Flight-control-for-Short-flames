@@ -13,7 +13,7 @@
     --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     --radius:12px;
     /* warming ramp: purple -> magenta -> pink -> red, then green / gray / orange */
-    --s-idea:#9b5de5; --s-prompt:#c44fd0; --s-image:#e35193; --s-video:#e8463f;
+    --s-idea:#3f7bff; --s-prompt:#7a5cf0; --s-image:#b34fd6; --s-video:#e8463f;
     --s-done:#2fb37f; --s-paused:#8a8f9c; --s-review:#f0911e;
   }
   @media (prefers-color-scheme: light){
@@ -29,7 +29,17 @@
   a{color:var(--accent)}
 
   header{position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:1px solid var(--line)}
-  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px}
+  .bar{display:flex;flex-direction:column;gap:9px;padding:9px 14px 11px}
+  .hrow1{display:flex;align-items:center;gap:9px}
+  .hrow3{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .h-spacer{flex:1}
+  @media(min-width:880px){
+    .bar{flex-direction:row;align-items:center;flex-wrap:nowrap}
+    .hrow1,.hrow3{display:contents}
+    .h-spacer{display:none}
+    .h-brand{order:1}.h-tabs{order:2}.h-search{order:3;flex:1}
+    .h-sort{order:4}.h-filter{order:5}.h-count{order:6}.h-gear{order:9}
+  }
   .brand{display:flex;align-items:baseline;gap:9px}
   .brand b{font-weight:600;font-size:17px;letter-spacing:-.01em}
   .brand .sub{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
@@ -67,10 +77,16 @@
     box-shadow:0 16px 40px rgba(0,0,0,.5);transform:scale(1.015)}
   .drop-ph{border:1.5px dashed var(--accent);border-radius:var(--radius);margin-bottom:10px;
     background:rgba(91,140,255,.09)}
-  .cbar{display:flex;align-items:center;gap:10px;padding:10px 13px 10px 14px}
-  .handle{cursor:grab;color:var(--ink-faint);touch-action:none;flex:none;line-height:0}
-  .handle:active{cursor:grabbing} .handle svg{width:16px;height:16px}
-  .nm{flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cbar{display:flex;align-items:stretch;padding:0}
+  .cleft{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:9px 6px 9px 14px;cursor:grab}
+  .cleft:active{cursor:grabbing}
+  .cmain{display:flex;align-items:center;gap:8px;min-width:0}
+  .cmeta{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .fdots{display:inline-flex;gap:5px;align-items:center;flex:none}
+  .fdot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink-faint);box-sizing:border-box;flex:none}
+  .fdot.on{background:var(--sc);border-color:var(--sc)}
+  .sid{font-family:var(--mono);font-size:11px;color:var(--ink-faint);flex:none;letter-spacing:.02em}
+  .nm{flex:1;min-width:0;font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .nm.untitled{color:var(--ink-faint);font-weight:400}
   .pill{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.03em;
     padding:3px 10px;border-radius:999px;text-transform:lowercase;cursor:pointer;border:none;flex:none;
@@ -78,34 +94,36 @@
   .counts{display:flex;gap:9px;flex:none;font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
   .ct{display:inline-flex;align-items:center;gap:3px} .ct.has{color:var(--ink-dim)}
   .ct svg{width:14px;height:14px}
-  .chev{background:none;border:none;cursor:pointer;color:var(--ink-faint);padding:3px;line-height:0;flex:none}
-  .chev:hover{color:var(--ink)} .chev svg{width:17px;height:17px}
+  .chev{flex:none;width:54px;align-self:stretch;display:flex;align-items:center;justify-content:center;
+    background:none;border:none;border-left:1px solid var(--line);cursor:pointer;color:var(--ink-faint)}
+  .chev:hover{color:var(--ink);background:var(--surface-2)} .chev svg{width:26px;height:26px}
 
-  .edit{padding:2px 14px 14px;border-top:1px solid var(--line)}
+  .edit{padding:2px 13px 12px;border-top:1px solid var(--line)}
   .erow{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
   .sidtag{font-family:var(--mono);font-size:11px;color:var(--ink-faint);flex:none}
   .edit label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
-    text-transform:uppercase;color:var(--ink-faint);margin:12px 0 4px}
+    text-transform:uppercase;color:var(--ink-faint);margin:9px 0 3px}
   .edit input[type=text],.edit input[type=url],.edit textarea{
     width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
-    padding:8px 10px;outline:none}
+    padding:6px 9px;outline:none}
   .edit input:focus,.edit textarea:focus{border-color:var(--accent)}
-  .edit textarea{resize:vertical;min-height:42px}
-  .fieldgroup{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:4px 12px 12px;margin-top:12px}
-  .fieldgroup .fg{padding-top:8px}
-  .fieldgroup .fg+.fg{border-top:1px solid var(--line)}
-  .nmedit{flex:1;min-width:0;font-weight:500;font-size:15px;background:var(--surface-2);
+  .edit textarea{resize:vertical;min-height:34px}
+  .fieldgroup{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:2px 11px 8px;margin-top:9px}
+  .fieldgroup .fg{padding-top:3px}
+  .fieldgroup textarea{min-height:0;line-height:1.35}
+  .fieldgroup label{margin:6px 0 2px}
+  .nmedit{flex:1;min-width:0;font-weight:600;font-size:17px;background:var(--surface-2);
     border:1px solid var(--line);border-radius:7px;padding:5px 9px;outline:none}
   .nmedit:focus{border-color:var(--accent)}
   .stars{display:inline-flex;gap:1px;flex:none}
   .star{background:none;border:none;cursor:pointer;padding:1px;line-height:0;color:var(--ink-faint)}
   .star svg{width:15px;height:15px}
-  .star.on{color:var(--s-idea)}
-  .star.on svg{fill:var(--s-idea)}
-  .promptbox textarea{font-family:var(--mono);font-size:13px;min-height:64px}
+  .star.on{color:var(--sc)}
+  .star.on svg{fill:var(--sc)}
+  .promptbox textarea{font-family:var(--mono);font-size:13px;min-height:46px}
   .nameedit{flex:1;min-width:150px}
 
-  .imghead{display:flex;align-items:center;gap:7px;margin:14px 0 6px;
+  .imghead{display:flex;align-items:center;gap:7px;margin:9px 0 5px;
     font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)}
   .imghead svg{width:14px;height:14px}
   .imgrow{display:flex;gap:7px;flex-wrap:wrap}
@@ -208,28 +226,27 @@
 
 <header>
   <div class="bar">
-    <div class="brand"><b>Shot Board</b><span class="sub">content pipeline</span></div>
-    <div class="tabs">
-      <button class="tab on" data-view="board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/></svg>Board</button>
-      <button class="tab" data-view="mood"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Mood</button>
+    <div class="hrow1">
+      <div class="brand h-brand"><b>Shot Board</b></div>
+      <div class="tabs h-tabs">
+        <button class="tab on" data-view="board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/></svg>Board</button>
+        <button class="tab" data-view="mood"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Mood</button>
+      </div>
+      <span class="h-spacer"></span>
+      <button class="btn h-gear" id="cfgBtn" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 8 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 3.6 8a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H8a1.6 1.6 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V8a1.6 1.6 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
     </div>
-    <span class="spacer"></span>
-    <span class="dot" id="syncDot"></span>
-    <button class="btn" id="loadBtn" title="Pull from GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Pull</button>
-    <button class="btn pri" id="saveBtn" title="Push to GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Push</button>
-    <button class="btn" id="cfgBtn" title="GitHub settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 8 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 3.6 8a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H8a1.6 1.6 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V8a1.6 1.6 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
-  </div>
-  <div class="controls" id="controls">
-    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="q" type="text" placeholder="Search…"></div>
-    <select class="sortsel" id="sort">
-      <option value="manual">Manual order</option>
-      <option value="name">By name</option>
-      <option value="status">By status</option>
-      <option value="priority">By priority</option>
-      <option value="updated">Recently updated</option>
-    </select>
-    <button class="btn" id="filterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>Filter<span class="fbadge" id="fcount"></span></button>
-    <span class="meta" id="count"></span>
+    <div class="search h-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="q" type="text" placeholder="Search…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="hrow3">
+      <select class="sortsel h-sort" id="sort">
+        <option value="manual">Manual order</option>
+        <option value="name">By name</option>
+        <option value="status">By status</option>
+        <option value="priority">By priority</option>
+        <option value="updated">Recently updated</option>
+      </select>
+      <button class="btn h-filter" id="filterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>Filter<span class="fbadge" id="fcount"></span></button>
+      <span class="meta h-count" id="count"></span>
+    </div>
   </div>
 </header>
 
@@ -308,7 +325,6 @@ function setView(v){
   view=v;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
   document.getElementById('board').style.display=v==='board'?'':'none';
-  document.getElementById('controls').style.display=v==='board'?'':'none';
   document.getElementById('moodView').style.display=v==='mood'?'':'none';
   document.getElementById('addBtn').style.display=v==='board'?'':'none';
   if(v==='mood') renderMood();
@@ -361,25 +377,29 @@ function cardInner(s){
   const oMore=oc>3?`<span class="barmore">+${oc-3}</span>`:'';
   const barimgs=oc?`<span class="barthumbs">${oThumbs}${oMore}</span>`:'';
   const nameEl=open
-    ? `<input class="nmedit" type="text" data-k="name" value="${esc(s.name)}" placeholder="Shot name">`
+    ? `<input class="nmedit" type="text" data-k="name" value="${esc(s.name)}" placeholder="Shot name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`
     : `<span class="nm ${s.name?'':'untitled'}">${esc(s.name)||'Untitled shot'}</span>`;
+  const dots=FIELDS.map(([k,l])=>`<span class="fdot ${(s[k]||'').trim()?'on':''}" data-f="${k}" title="${l}"></span>`).join('');
   return `<div class="cbar">
-      <span class="handle" title="Drag to reorder"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>
-      ${nameEl}
-      ${barimgs}
-      <button class="pill" data-status="${s.id}" title="Change status">${st.label}</button>
-      <span class="counts">
-        <span class="ct ${pc?'has':''}" title="prompt images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>${pc}</span>
-        <span class="ct ${oc?'has':''}" title="output images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>${oc}</span>
-      </span>
-      ${starsHTML(s)}
-      <button class="chev" data-toggle="${s.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${open?'M18 15l-6-6-6 6':'M6 9l6 6 6-6'}"/></svg></button>
+      <div class="cleft">
+        <div class="cmain">${nameEl}</div>
+        <div class="cmeta">
+          <span class="fdots">${dots}</span>
+          <span class="counts">
+            <span class="ct ${pc?'has':''}" title="prompt images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>${pc}</span>
+            <span class="ct ${oc?'has':''}" title="output images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>${oc}</span>
+          </span>
+          <button class="pill" data-status="${s.id}" title="Change status">${st.label}</button>
+          ${starsHTML(s)}
+        </div>
+      </div>
+      <button class="chev" data-toggle="${s.id}" title="Open / close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${open?'M18 15l-6-6-6 6':'M6 9l6 6 6-6'}"/></svg></button>
     </div>
     ${open?editorHTML(s):''}`;
 }
 
 function editorHTML(s){
-  const ta=(k,l)=>`<div class="fg"><label>${l}</label><textarea data-k="${k}">${esc(s[k])}</textarea></div>`;
+  const ta=(k,l)=>`<div class="fg"><label>${l}</label><textarea rows="1" data-k="${k}">${esc(s[k])}</textarea></div>`;
   const cam='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
   const film='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>';
   const grp=(g,label,icon)=>`
@@ -390,11 +410,10 @@ function editorHTML(s){
     </div>
     <input class="urlin" data-grp="${g}" placeholder="…or paste an image URL and press Enter">`;
   return `<div class="edit">
-    <div class="sidtag">${esc(s.id)}</div>
+    <label>Comments</label><textarea data-k="comments">${esc(s.comments)}</textarea>
     <div class="fieldgroup">${FIELDS.map(([k,l])=>ta(k,l)).join('')}</div>
     <div class="promptbox"><label>Latest prompt</label><textarea data-k="latestPrompt">${esc(s.latestPrompt)}</textarea></div>
     <label>Reference link</label><input type="url" data-k="url" value="${esc(s.url)}" placeholder="https://…">
-    <label>Comments</label><textarea data-k="comments">${esc(s.comments)}</textarea>
     ${grp('promptImages','Prompt images',cam)}
     ${grp('outputImages','Output images',film)}
     <div class="del" data-del="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/></svg>Delete shot</div>
@@ -426,6 +445,8 @@ function wireEditor(id){
   card.querySelectorAll('textarea[data-k],input[data-k]').forEach(el=>{
     el.oninput=()=>{
       s[el.dataset.k]=el.value;
+      const d=card.querySelector('.fdot[data-f="'+el.dataset.k+'"]');
+      if(d) d.classList.toggle('on', el.value.trim().length>0);
       clearTimeout(t); t=setTimeout(()=>{touch(s);persist();},350);
     };
   });
@@ -463,30 +484,55 @@ function addFiles(s,g,files,cb){
   if(pending===0&&cb) cb();
 }
 
-/* ---- native floating drag reorder (pointer events; touch + mouse) ---- */
+/* ---- whole-card drag reorder: grab anywhere except controls ---- */
 function enableDrag(){
   const board=document.getElementById('board');
-  let st=null;
+  let st=null, arm=null;
+  const NOPE='button,a,input,textarea,select,.pill,.star,.stars,.chev,.counts,.barthumbs,.addtile,.rm,.it,.urlin,label';
+
   board.addEventListener('pointerdown',e=>{
-    const handle=e.target.closest('.handle'); if(!handle) return;
+    if(e.button!=null && e.button!==0) return;
+    if(e.target.closest(NOPE)) return;
+    const card=e.target.closest('.card'); if(!card) return;
     if(ui.sort!=='manual'){toast('Switch to “Manual order” to reorder');return;}
-    const card=handle.closest('.card'); if(!card) return;
-    e.preventDefault();
+    const touch=e.pointerType==='touch';
+    arm={card,id:e.pointerId,x0:e.clientX,y0:e.clientY,touch,ready:!touch,timer:null};
+    if(touch) arm.timer=setTimeout(()=>{if(arm)arm.ready=true;},200); // hold to grab on mobile
+    document.addEventListener('pointermove',onPre);
+    document.addEventListener('pointerup',cancelPre,{once:true});
+  });
+
+  function onPre(e){
+    if(!arm) return;
+    const dist=Math.hypot(e.clientX-arm.x0,e.clientY-arm.y0);
+    if(arm.touch && !arm.ready){ if(dist>10) cancelPre(); return; } // moved first → let it scroll
+    if(dist<5) return;                                              // mouse: ignore micro-moves
+    begin(e);
+  }
+  function cancelPre(){
+    if(arm&&arm.timer) clearTimeout(arm.timer);
+    arm=null; document.removeEventListener('pointermove',onPre);
+  }
+  function begin(e){
+    const card=arm.card, pid=arm.id;
+    if(arm.timer) clearTimeout(arm.timer);
+    document.removeEventListener('pointermove',onPre); arm=null;
     const rect=card.getBoundingClientRect();
     const ph=document.createElement('div'); ph.className='drop-ph'; ph.style.height=rect.height+'px';
-    st={card,ph,dx:e.clientX-rect.left,dy:e.clientY-rect.top,w:rect.width};
+    st={card,ph,dx:e.clientX-rect.left,dy:e.clientY-rect.top};
     card.parentNode.insertBefore(ph,card.nextSibling);
     card.classList.add('dragging');
     card.style.width=rect.width+'px';
     moveCard(e);
     document.body.classList.add('dragging');
-    try{handle.setPointerCapture(e.pointerId);}catch(_){}
+    try{card.setPointerCapture(pid);}catch(_){}
     document.addEventListener('pointermove',onMove);
     document.addEventListener('pointerup',onUp,{once:true});
-  });
+  }
   function moveCard(e){ st.card.style.left=(e.clientX-st.dx)+'px'; st.card.style.top=(e.clientY-st.dy)+'px'; }
   function onMove(e){
     if(!st) return;
+    e.preventDefault();
     moveCard(e);
     const others=[...board.querySelectorAll('.card:not(.dragging)')];
     let after=null;
@@ -595,7 +641,14 @@ document.getElementById('addBtn').onclick=()=>{
   const s=normalize({id:uid(),name:'',status:'idea',functions:'',actions:'',elements:'',interactions:'',latestPrompt:'',url:'',comments:'',promptImages:[],outputImages:[]});
   touch(s); state.shots.unshift(s); expanded.add(s.id); persist();
   ui.sort='manual'; document.getElementById('sort').value='manual'; save(LS_UI,ui);
-  render(); const nc=document.querySelector(`.card[data-id="${s.id}"]`); if(nc&&nc.scrollIntoView)nc.scrollIntoView({behavior:'smooth',block:'center'});
+  render();
+  const nc=document.querySelector(`.card[data-id="${s.id}"]`);
+  if(nc){
+    const hd=document.querySelector('header');
+    const top=nc.getBoundingClientRect().top+window.scrollY-(hd?hd.offsetHeight:0)-8;
+    const nm=nc.querySelector('.nmedit'); if(nm) nm.focus({preventScroll:true});
+    window.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+  }
 };
 
 /* settings + github sync */
@@ -613,16 +666,24 @@ document.getElementById('cfgBtn').onclick=()=>{
     <label>Branch</label><input id="c_branch" value="${esc(cfg.branch)}" placeholder="main">
     <label>Data file path</label><input id="c_path" value="${esc(cfg.path)}" placeholder="data/shots.json">
     <label>Personal access token</label><input id="c_token" value="${esc(cfg.token)}" placeholder="github_pat_…">
-    <div class="hint">GitHub sync is optional — the board saves locally on its own. Use a fine-grained token scoped to this one repo with Contents: read &amp; write. Stored only in this browser, sent only to api.github.com.</div>`;
+    <div class="hint">GitHub sync is optional — the board saves locally on its own. Use a fine-grained token scoped to this one repo with Contents: read &amp; write. Stored only in this browser, sent only to api.github.com.</div>
+    <div class="pop-sep" style="margin:16px 0"></div>
+    <label>Sync now</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-pull><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Pull</button>
+      <button class="btn pri" data-push><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Push</button>
+    </div>`;
   const {sh,close}=openSheet('Settings',inner,`<button class="btn" data-x2>Cancel</button><button class="btn pri" data-ok>Save</button>`);
   sh.querySelector('[data-export]').onclick=()=>exportBoard();
   sh.querySelector('[data-import]').onclick=()=>importBoard(close);
+  sh.querySelector('[data-pull]').onclick=()=>pull(false);
+  sh.querySelector('[data-push]').onclick=()=>push();
   sh.querySelector('[data-x2]').onclick=close;
   sh.querySelector('[data-ok]').onclick=()=>{const g=id=>sh.querySelector('#'+id).value.trim();
     cfg={owner:g('c_owner'),repo:g('c_repo'),branch:g('c_branch')||'main',path:g('c_path')||'data/shots.json',token:g('c_token')};
     save(LS_CFG,cfg);setDot(cfg.token&&cfg.repo?'idle':'cfg');close();toast('Settings saved');};
 };
-function setDot(s){const d=document.getElementById('syncDot');d.className='dot'+(s==='ok'?' on':s==='err'?' err':'');d.title={ok:'Synced',err:'Sync error',idle:'Connected',cfg:'Add settings'}[s]||''}
+function setDot(s){const d=document.getElementById('syncDot');if(!d)return;d.className='dot'+(s==='ok'?' on':s==='err'?' err':'');d.title={ok:'Synced',err:'Sync error',idle:'Connected',cfg:'Add settings'}[s]||''}
 function exportBoard(){
   const blob=new Blob([JSON.stringify({shots:state.shots,updatedAt:new Date().toISOString()},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shots.json';
@@ -662,8 +723,6 @@ async function push(){try{setDot('idle');
   if(!r.ok)throw new Error('GitHub '+r.status+' — '+(await r.text()).slice(0,80));
   state.sha=(await r.json()).content.sha;setDot('ok');toast('Pushed to GitHub ✓');
 }catch(e){setDot('err');toast(e.message)}}
-document.getElementById('loadBtn').onclick=()=>pull(false);
-document.getElementById('saveBtn').onclick=()=>push();
 </script>
 </body>
 </html>
