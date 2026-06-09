@@ -292,6 +292,14 @@ state.shots=(load(LS_DATA,{shots:[]}).shots||[]).map(normalize);
 document.getElementById('sort').value=ui.sort;
 updateFilterBadge(); render(); setView('board'); enableDrag();
 setDot(cfg.token&&cfg.repo?'idle':'cfg');
+/* first-open seed: if board is empty, load bundled data/shots.json */
+if(!state.shots.length){
+  fetch('data/shots.json?t='+Date.now())
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{const sh=d&&(Array.isArray(d)?d:d.shots);
+      if(sh&&sh.length){state.shots=sh.map(normalize);persist();render();}})
+    .catch(()=>{});
+}
 if(cfg.token&&cfg.owner&&cfg.repo) pull(true);
 
 /* tabs */
