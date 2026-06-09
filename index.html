@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shot Board — content pipeline</title>
+<style>
+  :root{
+    --bg:#15171c; --surface:#1c1f26; --surface-2:#232730; --line:#2e323d;
+    --ink:#e9ebf0; --ink-dim:#9aa1b1; --ink-faint:#646b7d;
+    --accent:#5b8cff; --accent-ink:#0f1830;
+    --mono:'SF Mono',ui-monospace,'Cascadia Mono','Roboto Mono',Menlo,Consolas,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --radius:12px;
+    /* warming ramp: purple -> magenta -> pink -> red, then green / gray / orange */
+    --s-idea:#9b5de5; --s-prompt:#c44fd0; --s-image:#e35193; --s-video:#e8463f;
+    --s-done:#2fb37f; --s-paused:#8a8f9c; --s-review:#f0911e;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f3f4f7; --surface:#fff; --surface-2:#f7f8fb; --line:#e3e6ec;
+      --ink:#1b1e27; --ink-dim:#5b6273; --ink-faint:#8b91a1; --accent-ink:#fff; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;
+    line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+  body.dragging{user-select:none;-webkit-user-select:none}
+  button,input,select,textarea{font:inherit;color:inherit}
+  a{color:var(--accent)}
+
+  header{position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:1px solid var(--line)}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px}
+  .brand{display:flex;align-items:baseline;gap:9px}
+  .brand b{font-weight:600;font-size:17px;letter-spacing:-.01em}
+  .brand .sub{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  .tabs{display:flex;gap:4px;margin-left:6px}
+  .tab{background:none;border:none;cursor:pointer;color:var(--ink-dim);padding:6px 12px;
+    border-radius:8px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+  .tab.on{background:var(--surface-2);color:var(--ink)}
+  .tab svg{width:15px;height:15px}
+  .spacer{margin-left:auto}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--s-paused);flex:none}
+  .dot.on{background:var(--s-done)} .dot.err{background:var(--s-review)}
+  .btn{background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+    padding:7px 11px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;
+    gap:6px;transition:border-color .12s}
+  .btn:hover{border-color:var(--ink-faint)}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:500}
+  .btn svg{width:15px;height:15px}
+  .fbadge{background:var(--accent);color:var(--accent-ink);border-radius:999px;font-size:11px;
+    font-weight:600;min-width:17px;height:17px;padding:0 5px;display:none;align-items:center;justify-content:center}
+  .fbadge.on{display:inline-flex}
+
+  .controls{display:flex;gap:8px;align-items:center;padding:0 16px 11px;flex-wrap:wrap}
+  .search{flex:1;min-width:150px;display:flex;align-items:center;gap:8px;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:9px;padding:0 11px}
+  .search input{flex:1;background:none;border:none;outline:none;padding:9px 0}
+  .search svg{width:15px;height:15px;color:var(--ink-faint);flex:none}
+  .sortsel{background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer}
+  .meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);white-space:nowrap}
+
+  main{padding:14px 16px 96px;max-width:1000px;margin:0 auto}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    margin-bottom:10px;box-shadow:inset 4px 0 0 var(--sc,var(--line));overflow:hidden}
+  .card.dragging{position:fixed;z-index:70;pointer-events:none;opacity:.97;
+    box-shadow:0 16px 40px rgba(0,0,0,.5);transform:scale(1.015)}
+  .drop-ph{border:1.5px dashed var(--accent);border-radius:var(--radius);margin-bottom:10px;
+    background:rgba(91,140,255,.09)}
+  .cbar{display:flex;align-items:center;gap:10px;padding:10px 13px 10px 14px}
+  .handle{cursor:grab;color:var(--ink-faint);touch-action:none;flex:none;line-height:0}
+  .handle:active{cursor:grabbing} .handle svg{width:16px;height:16px}
+  .nm{flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nm.untitled{color:var(--ink-faint);font-weight:400}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.03em;
+    padding:3px 10px;border-radius:999px;text-transform:lowercase;cursor:pointer;border:none;flex:none;
+    background:var(--sc);color:var(--bg)}
+  .counts{display:flex;gap:9px;flex:none;font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
+  .ct{display:inline-flex;align-items:center;gap:3px} .ct.has{color:var(--ink-dim)}
+  .ct svg{width:14px;height:14px}
+  .chev{background:none;border:none;cursor:pointer;color:var(--ink-faint);padding:3px;line-height:0;flex:none}
+  .chev:hover{color:var(--ink)} .chev svg{width:17px;height:17px}
+
+  .edit{padding:2px 14px 14px;border-top:1px solid var(--line)}
+  .erow{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  .sidtag{font-family:var(--mono);font-size:11px;color:var(--ink-faint);flex:none}
+  .edit label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink-faint);margin:12px 0 4px}
+  .edit input[type=text],.edit input[type=url],.edit textarea{
+    width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;outline:none}
+  .edit input:focus,.edit textarea:focus{border-color:var(--accent)}
+  .edit textarea{resize:vertical;min-height:42px}
+  .fieldgroup{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:4px 12px 12px;margin-top:12px}
+  .fieldgroup .fg{padding-top:8px}
+  .fieldgroup .fg+.fg{border-top:1px solid var(--line)}
+  .nmedit{flex:1;min-width:0;font-weight:500;font-size:15px;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:7px;padding:5px 9px;outline:none}
+  .nmedit:focus{border-color:var(--accent)}
+  .stars{display:inline-flex;gap:1px;flex:none}
+  .star{background:none;border:none;cursor:pointer;padding:1px;line-height:0;color:var(--ink-faint)}
+  .star svg{width:15px;height:15px}
+  .star.on{color:var(--s-idea)}
+  .star.on svg{fill:var(--s-idea)}
+  .promptbox textarea{font-family:var(--mono);font-size:13px;min-height:64px}
+  .nameedit{flex:1;min-width:150px}
+
+  .imghead{display:flex;align-items:center;gap:7px;margin:14px 0 6px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)}
+  .imghead svg{width:14px;height:14px}
+  .imgrow{display:flex;gap:7px;flex-wrap:wrap}
+  .it{position:relative}
+  .it img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer}
+  .it .rm{position:absolute;top:-6px;right:-6px;background:var(--s-video);color:#fff;border:none;
+    border-radius:50%;width:19px;height:19px;cursor:pointer;font-size:12px;line-height:1}
+  .addtile{width:64px;height:64px;border:1px dashed var(--line);border-radius:8px;cursor:pointer;
+    color:var(--ink-faint);display:flex;align-items:center;justify-content:center}
+  .addtile:hover,.addtile.over{border-color:var(--accent);color:var(--accent)} .addtile svg{width:18px;height:18px}
+  .urlin{margin-top:7px;width:100%;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;outline:none;font-size:13px}
+  .del{color:var(--s-video);cursor:pointer;font-size:13px;margin-top:16px;display:inline-flex;align-items:center;gap:6px}
+  .del svg{width:15px;height:15px}
+
+  .mood{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;
+    padding:14px 16px 96px;max-width:1100px;margin:0 auto}
+  .mtile{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);
+    aspect-ratio:1;cursor:pointer;background:var(--surface-2)}
+  .mtile img{width:100%;height:100%;object-fit:cover;display:block}
+  .mtile .cap{position:absolute;left:0;right:0;bottom:0;padding:6px 8px;font-size:11.5px;
+    background:linear-gradient(transparent,rgba(0,0,0,.7));color:#fff;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+
+  .empty{text-align:center;padding:70px 20px;color:var(--ink-dim)}
+  .empty svg{width:34px;height:34px;color:var(--ink-faint);margin-bottom:10px}
+  .empty h3{font-weight:600;margin:0 0 4px;color:var(--ink)}
+
+  .fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:45;
+    background:var(--accent);color:var(--accent-ink);border:none;border-radius:14px;padding:13px 18px;
+    font-weight:600;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.3);display:inline-flex;align-items:center;gap:7px}
+  .fab svg{width:18px;height:18px}
+
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(82px + env(safe-area-inset-bottom));
+    z-index:80;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;
+    opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .lightbox{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.86);display:flex;
+    align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+
+  .scrim{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:flex;
+    align-items:flex-end;justify-content:center}
+  @media(min-width:640px){.scrim{align-items:center;padding:24px}}
+  .sheet{background:var(--surface);width:100%;max-width:480px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0}
+  @media(min-width:640px){.sheet{border-radius:16px}}
+  .sheet h2{font-size:18px;font-weight:600;margin:0;padding:16px 18px;position:sticky;top:0;
+    background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .form{padding:16px 18px}
+  .form label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink-faint);margin:13px 0 5px}
+  .form label:first-child{margin-top:0}
+  .form input{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+    padding:9px 11px;outline:none;font-family:var(--mono);font-size:13px}
+  .form input:focus{border-color:var(--accent)}
+  .hint{font-size:12px;color:var(--ink-faint);margin-top:8px;line-height:1.5}
+  .sheet-foot{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+    padding:12px 18px;display:flex;gap:9px;justify-content:flex-end}
+  .ico{background:none;border:none;cursor:pointer;color:var(--ink-faint);padding:5px;border-radius:7px;line-height:0}
+  .ico:hover{color:var(--ink)} .ico svg{width:18px;height:18px}
+
+  /* status picker + filter chips */
+  .statlist{display:flex;flex-direction:column;gap:6px}
+  .statrow{display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+    font-family:var(--mono);font-size:13px;text-transform:lowercase}
+  .statrow:hover{border-color:var(--ink-faint)}
+  .statrow.sel{border-color:var(--accent)}
+  .statrow .sw{width:13px;height:13px;border-radius:50%;flex:none}
+  .statrow .ck{margin-left:auto;color:var(--accent);line-height:0} .statrow .ck svg{width:16px;height:16px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:12px;letter-spacing:.02em;text-transform:lowercase;
+    border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:7px 12px;
+    cursor:pointer;color:var(--ink-dim);display:inline-flex;align-items:center;gap:6px}
+  .chip .sw{width:9px;height:9px;border-radius:50%}
+  .chip.on{color:var(--bg);border-color:transparent}
+
+  /* anchored popover (status change + filter, opens at the spot) */
+  .pop-backdrop{position:fixed;inset:0;z-index:60}
+  .popover{position:fixed;z-index:61;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.42);padding:5px;min-width:188px;
+    max-width:240px;max-height:64vh;overflow:auto}
+  .poprow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+    background:none;border:none;border-radius:8px;padding:9px 10px;font-family:var(--mono);
+    font-size:13px;text-transform:lowercase;color:var(--ink)}
+  .poprow:hover{background:var(--surface-2)}
+  .poprow .sw{width:12px;height:12px;border-radius:50%;flex:none}
+  .poprow.off{color:var(--ink-faint)} .poprow.off .sw{opacity:.4}
+  .poprow .ck{margin-left:auto;color:var(--accent);line-height:0} .poprow .ck svg{width:16px;height:16px}
+  .pop-sep{height:1px;background:var(--line);margin:5px 6px}
+  .poprow.clear{color:var(--ink-faint);justify-content:center;font-size:12px}
+
+  /* output thumbnails on the collapsed bar */
+  .barthumbs{display:flex;align-items:center;gap:3px;flex:none}
+  .barthumb{width:20px;height:20px;border-radius:5px;object-fit:cover;border:1px solid var(--line)}
+  .barmore{font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-left:1px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand"><b>Shot Board</b><span class="sub">content pipeline</span></div>
+    <div class="tabs">
+      <button class="tab on" data-view="board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/></svg>Board</button>
+      <button class="tab" data-view="mood"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Mood</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="dot" id="syncDot"></span>
+    <button class="btn" id="loadBtn" title="Pull from GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Pull</button>
+    <button class="btn pri" id="saveBtn" title="Push to GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Push</button>
+    <button class="btn" id="cfgBtn" title="GitHub settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 8 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 3.6 8a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H8a1.6 1.6 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V8a1.6 1.6 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
+  </div>
+  <div class="controls" id="controls">
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="q" type="text" placeholder="Search…"></div>
+    <select class="sortsel" id="sort">
+      <option value="manual">Manual order</option>
+      <option value="name">By name</option>
+      <option value="status">By status</option>
+      <option value="priority">By priority</option>
+      <option value="updated">Recently updated</option>
+    </select>
+    <button class="btn" id="filterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>Filter<span class="fbadge" id="fcount"></span></button>
+    <span class="meta" id="count"></span>
+  </div>
+</header>
+
+<main id="board"></main>
+<div class="mood" id="moodView" style="display:none"></div>
+
+<button class="fab" id="addBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>New shot</button>
+
+<input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUSES = [
+  {id:'idea',   label:'idea',   color:'var(--s-idea)'},
+  {id:'prompt', label:'prompt', color:'var(--s-prompt)'},
+  {id:'image',  label:'image',  color:'var(--s-image)'},
+  {id:'video',  label:'video',  color:'var(--s-video)'},
+  {id:'done',   label:'done',   color:'var(--s-done)'},
+  {id:'paused', label:'paused', color:'var(--s-paused)'},
+  {id:'review', label:'review', color:'var(--s-review)'},
+];
+const FIELDS=[['functions','Functions'],['actions','Actions'],['elements','Elements'],['interactions','Element interactions']];
+const STATUS_MAP={in_progress:'video',published:'done'}; // migrate old taxonomy
+const LS_DATA='shotboard.data', LS_CFG='shotboard.cfg', LS_UI='shotboard.ui';
+const CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>';
+
+/* ---- fail-safe storage: works even when localStorage is blocked (file://, sandbox) ---- */
+const mem={};
+function lsGet(k){try{const v=localStorage.getItem(k);if(v!=null)return v;}catch{} return k in mem?mem[k]:null;}
+function lsSet(k,v){mem[k]=v;try{localStorage.setItem(k,v);}catch{}}
+function load(k,d){try{return {...d,...JSON.parse(lsGet(k)||'{}')}}catch{return d}}
+function save(k,v){lsSet(k,JSON.stringify(v))}
+
+let state={shots:[],sha:null};
+let cfg=load(LS_CFG,{owner:'',repo:'',branch:'main',path:'data/shots.json',token:''});
+let ui=load(LS_UI,{sort:'manual'});
+let filter={q:'',statuses:new Set(),prios:new Set()};
+let view='board';
+let expanded=new Set();
+
+function persist(){save(LS_DATA,{shots:state.shots})}
+const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const statusOf=id=>STATUSES.find(s=>s.id===id)||STATUSES[0];
+const statusIdx=id=>{const i=STATUSES.findIndex(s=>s.id===id);return i<0?99:i};
+function uid(){const ns=state.shots.map(s=>parseInt((s.id||'').replace(/\D/g,''))||0);return 'S'+String((ns.length?Math.max(...ns):0)+1).padStart(3,'0')}
+function touch(s){s.updatedAt=new Date().toISOString()}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
+function normalize(s){
+  if(!s.promptImages && !s.outputImages){s.promptImages=s.images||[];s.outputImages=[];}
+  s.promptImages=s.promptImages||[]; s.outputImages=s.outputImages||[]; delete s.images;
+  if(STATUS_MAP[s.status]) s.status=STATUS_MAP[s.status];
+  if(!STATUSES.some(x=>x.id===s.status)) s.status='idea';
+  s.priority=Math.max(0,Math.min(3,parseInt(s.priority)||0));
+  return s;
+}
+
+/* boot */
+state.shots=(load(LS_DATA,{shots:[]}).shots||[]).map(normalize);
+document.getElementById('sort').value=ui.sort;
+updateFilterBadge(); render(); setView('board'); enableDrag();
+setDot(cfg.token&&cfg.repo?'idle':'cfg');
+if(cfg.token&&cfg.owner&&cfg.repo) pull(true);
+
+/* tabs */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>setView(t.dataset.view));
+function setView(v){
+  view=v;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
+  document.getElementById('board').style.display=v==='board'?'':'none';
+  document.getElementById('controls').style.display=v==='board'?'':'none';
+  document.getElementById('moodView').style.display=v==='mood'?'':'none';
+  document.getElementById('addBtn').style.display=v==='board'?'':'none';
+  if(v==='mood') renderMood();
+}
+
+/* search + sort */
+document.getElementById('q').oninput=e=>{filter.q=e.target.value.toLowerCase();render()};
+document.getElementById('sort').onchange=e=>{ui.sort=e.target.value;save(LS_UI,ui);render()};
+
+function visible(){
+  return state.shots.filter(s=>{
+    if(filter.statuses.size && !filter.statuses.has(s.status)) return false;
+    if(filter.prios.size && !filter.prios.has(s.priority||0)) return false;
+    if(filter.q){
+      const hay=[s.id,s.name,s.functions,s.actions,s.elements,s.interactions,s.latestPrompt,s.comments,s.url].join(' ').toLowerCase();
+      if(!hay.includes(filter.q)) return false;
+    }
+    return true;
+  });
+}
+function ordered(){
+  let a=visible();
+  if(ui.sort==='name') a=[...a].sort((x,y)=>(x.name||'').localeCompare(y.name||''));
+  else if(ui.sort==='status') a=[...a].sort((x,y)=>statusIdx(x.status)-statusIdx(y.status));
+  else if(ui.sort==='updated') a=[...a].sort((x,y)=>(y.updatedAt||'').localeCompare(x.updatedAt||''));
+  else if(ui.sort==='priority') a=[...a].sort((x,y)=>(y.priority||0)-(x.priority||0));
+  return a;
+}
+
+/* render board */
+function render(){
+  const board=document.getElementById('board');
+  const list=ordered();
+  const cnt=document.getElementById('count'); if(cnt) cnt.textContent=`${list.length}/${state.shots.length}`;
+  if(!state.shots.length){board.innerHTML=`<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 9v12"/></svg><h3>No shots yet</h3><div>Add your first shot to start the pipeline.</div></div>`;return;}
+  if(!list.length){board.innerHTML=`<div class="empty"><h3>Nothing matches</h3><div>Clear the search or filter.</div></div>`;return;}
+  board.innerHTML=list.map(cardHTML).join('');
+  board.querySelectorAll('.card').forEach(wireCard);
+}
+
+function cardHTML(s){return `<div class="card" data-id="${s.id}" style="--sc:${statusOf(s.status).color}">${cardInner(s)}</div>`;}
+function starsHTML(s){
+  const star='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l2.6 5.6 6 .7-4.4 4.1 1.2 6L12 16.6 6.6 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>';
+  return `<span class="stars" data-id="${s.id}">${[1,2,3].map(i=>`<button class="star ${i<=(s.priority||0)?'on':''}" data-p="${i}" title="${i} star${i>1?'s':''}">${star}</button>`).join('')}</span>`;
+}
+function cardInner(s){
+  const st=statusOf(s.status), open=expanded.has(s.id);
+  const pc=s.promptImages.length, oc=s.outputImages.length;
+  const oThumbs=s.outputImages.slice(0,3).map(src=>`<img class="barthumb" src="${esc(src)}" alt="">`).join('');
+  const oMore=oc>3?`<span class="barmore">+${oc-3}</span>`:'';
+  const barimgs=oc?`<span class="barthumbs">${oThumbs}${oMore}</span>`:'';
+  const nameEl=open
+    ? `<input class="nmedit" type="text" data-k="name" value="${esc(s.name)}" placeholder="Shot name">`
+    : `<span class="nm ${s.name?'':'untitled'}">${esc(s.name)||'Untitled shot'}</span>`;
+  return `<div class="cbar">
+      <span class="handle" title="Drag to reorder"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>
+      ${nameEl}
+      ${barimgs}
+      <button class="pill" data-status="${s.id}" title="Change status">${st.label}</button>
+      <span class="counts">
+        <span class="ct ${pc?'has':''}" title="prompt images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>${pc}</span>
+        <span class="ct ${oc?'has':''}" title="output images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>${oc}</span>
+      </span>
+      ${starsHTML(s)}
+      <button class="chev" data-toggle="${s.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${open?'M18 15l-6-6-6 6':'M6 9l6 6 6-6'}"/></svg></button>
+    </div>
+    ${open?editorHTML(s):''}`;
+}
+
+function editorHTML(s){
+  const ta=(k,l)=>`<div class="fg"><label>${l}</label><textarea data-k="${k}">${esc(s[k])}</textarea></div>`;
+  const cam='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+  const film='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>';
+  const grp=(g,label,icon)=>`
+    <div class="imghead">${icon}${label} — ${s[g].length} file${s[g].length===1?'':'s'}</div>
+    <div class="imgrow">
+      ${s[g].map((src,i)=>`<div class="it"><img src="${esc(src)}" data-src="${esc(src)}"><button class="rm" data-grp="${g}" data-i="${i}">×</button></div>`).join('')}
+      <div class="addtile" data-grp="${g}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div>
+    </div>
+    <input class="urlin" data-grp="${g}" placeholder="…or paste an image URL and press Enter">`;
+  return `<div class="edit">
+    <div class="sidtag">${esc(s.id)}</div>
+    <div class="fieldgroup">${FIELDS.map(([k,l])=>ta(k,l)).join('')}</div>
+    <div class="promptbox"><label>Latest prompt</label><textarea data-k="latestPrompt">${esc(s.latestPrompt)}</textarea></div>
+    <label>Reference link</label><input type="url" data-k="url" value="${esc(s.url)}" placeholder="https://…">
+    <label>Comments</label><textarea data-k="comments">${esc(s.comments)}</textarea>
+    ${grp('promptImages','Prompt images',cam)}
+    ${grp('outputImages','Output images',film)}
+    <div class="del" data-del="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/></svg>Delete shot</div>
+  </div>`;
+}
+
+function wireCard(card){
+  const id=card.dataset.id, s=state.shots.find(x=>x.id===id);
+  const pill=card.querySelector('[data-status]'); pill.onclick=()=>openStatusPicker(pill,id);
+  card.querySelector('[data-toggle]').onclick=()=>{expanded.has(id)?expanded.delete(id):expanded.add(id);refreshCard(id);};
+  card.querySelectorAll('.star').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const i=+b.dataset.p; s.priority=(s.priority===i?0:i); touch(s); persist();
+    if(ui.sort==='priority'||filter.prios.size) render(); else refreshCard(id);
+  });
+  if(expanded.has(id)) wireEditor(id);
+}
+function refreshCard(id){
+  const card=document.querySelector(`.card[data-id="${id}"]`), s=state.shots.find(x=>x.id===id);
+  if(!card||!s) return;
+  card.style.setProperty('--sc',statusOf(s.status).color);
+  card.innerHTML=cardInner(s);
+  wireCard(card);
+}
+
+function wireEditor(id){
+  const card=document.querySelector(`.card[data-id="${id}"]`); if(!card) return;
+  const s=state.shots.find(x=>x.id===id); let t;
+  card.querySelectorAll('textarea[data-k],input[data-k]').forEach(el=>{
+    el.oninput=()=>{
+      s[el.dataset.k]=el.value;
+      clearTimeout(t); t=setTimeout(()=>{touch(s);persist();},350);
+    };
+  });
+  card.querySelectorAll('.it img').forEach(img=>img.onclick=()=>lightbox(img.dataset.src));
+  card.querySelectorAll('.rm').forEach(b=>b.onclick=()=>{s[b.dataset.grp].splice(+b.dataset.i,1);touch(s);persist();refreshCard(id);});
+  card.querySelectorAll('.addtile').forEach(tile=>{
+    const g=tile.dataset.grp;
+    tile.onclick=()=>{pendingUpload={id,g};const fi=document.getElementById('fileInput');fi.value='';fi.click();};
+    tile.ondragover=e=>{e.preventDefault();tile.classList.add('over');};
+    tile.ondragleave=()=>tile.classList.remove('over');
+    tile.ondrop=e=>{e.preventDefault();tile.classList.remove('over');addFiles(s,g,e.dataTransfer.files,()=>refreshCard(id));};
+  });
+  card.querySelectorAll('.urlin').forEach(inp=>inp.onkeydown=e=>{
+    if(e.key==='Enter'&&inp.value.trim()){s[inp.dataset.grp].push(inp.value.trim());inp.value='';touch(s);persist();refreshCard(id);}
+  });
+  card.querySelector('[data-del]').onclick=()=>{
+    if(confirm('Delete '+s.id+'?')){state.shots=state.shots.filter(x=>x.id!==id);expanded.delete(id);persist();render();}
+  };
+}
+let pendingUpload=null;
+document.getElementById('fileInput').onchange=e=>{
+  if(pendingUpload){const{id,g}=pendingUpload,s=state.shots.find(x=>x.id===id);if(s)addFiles(s,g,e.target.files,()=>refreshCard(id));}
+  pendingUpload=null; e.target.value='';
+};
+function addFiles(s,g,files,cb){
+  let pending=0;
+  [...files].forEach(f=>{
+    if(!f.type || !f.type.startsWith('image/')) return;
+    pending++;
+    const r=new FileReader();
+    r.onload=()=>{s[g].push(r.result);touch(s);persist();if(--pending===0&&cb)cb();};
+    r.onerror=()=>{if(--pending===0&&cb)cb();};
+    r.readAsDataURL(f);
+  });
+  if(pending===0&&cb) cb();
+}
+
+/* ---- native floating drag reorder (pointer events; touch + mouse) ---- */
+function enableDrag(){
+  const board=document.getElementById('board');
+  let st=null;
+  board.addEventListener('pointerdown',e=>{
+    const handle=e.target.closest('.handle'); if(!handle) return;
+    if(ui.sort!=='manual'){toast('Switch to “Manual order” to reorder');return;}
+    const card=handle.closest('.card'); if(!card) return;
+    e.preventDefault();
+    const rect=card.getBoundingClientRect();
+    const ph=document.createElement('div'); ph.className='drop-ph'; ph.style.height=rect.height+'px';
+    st={card,ph,dx:e.clientX-rect.left,dy:e.clientY-rect.top,w:rect.width};
+    card.parentNode.insertBefore(ph,card.nextSibling);
+    card.classList.add('dragging');
+    card.style.width=rect.width+'px';
+    moveCard(e);
+    document.body.classList.add('dragging');
+    try{handle.setPointerCapture(e.pointerId);}catch(_){}
+    document.addEventListener('pointermove',onMove);
+    document.addEventListener('pointerup',onUp,{once:true});
+  });
+  function moveCard(e){ st.card.style.left=(e.clientX-st.dx)+'px'; st.card.style.top=(e.clientY-st.dy)+'px'; }
+  function onMove(e){
+    if(!st) return;
+    moveCard(e);
+    const others=[...board.querySelectorAll('.card:not(.dragging)')];
+    let after=null;
+    for(const c of others){const r=c.getBoundingClientRect();if(e.clientY < r.top + r.height/2){after=c;break;}}
+    if(after) board.insertBefore(st.ph,after); else board.appendChild(st.ph);
+  }
+  function onUp(){
+    if(!st) return;
+    const {card,ph}=st;
+    card.classList.remove('dragging');
+    const sid=card.dataset.id, sh=state.shots.find(x=>x.id===sid);
+    card.setAttribute('style', sh?`--sc:${statusOf(sh.status).color}`:'');
+    ph.parentNode.insertBefore(card,ph); ph.remove();
+    document.body.classList.remove('dragging');
+    document.removeEventListener('pointermove',onMove);
+    const order=[...board.querySelectorAll('.card')].map(c=>c.dataset.id);
+    state.shots.sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
+    st=null; persist(); toast('Order updated');
+  }
+}
+
+/* ---- modal helper ---- */
+function openSheet(title,inner,footer){
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="scrim"><div class="sheet">
+    <h2>${title}<button class="ico" data-x><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></h2>
+    <div class="form">${inner}</div>${footer?`<div class="sheet-foot">${footer}</div>`:''}
+  </div></div>`;
+  const sh=root.querySelector('.sheet'), close=()=>root.innerHTML='';
+  root.querySelector('.scrim').onclick=e=>{if(e.target.classList.contains('scrim'))close()};
+  sh.querySelector('[data-x]').onclick=close;
+  return {sh,close};
+}
+
+/* ---- anchored popover: opens right at the element you clicked ---- */
+function openPopover(anchor,inner){
+  const root=document.getElementById('modalRoot');
+  const back=document.createElement('div'); back.className='pop-backdrop';
+  const pop=document.createElement('div'); pop.className='popover'; pop.innerHTML=inner;
+  root.appendChild(back); root.appendChild(pop);
+  const r=anchor.getBoundingClientRect();
+  const vw=window.innerWidth, vh=window.innerHeight;
+  const pw=pop.offsetWidth||200, ph=pop.offsetHeight||10;
+  let left=Math.min(r.left, vw-8-pw); if(left<8) left=8;
+  let top=r.bottom+6; if(top+ph>vh-8) top=Math.max(8, r.top-6-ph);
+  pop.style.left=left+'px'; pop.style.top=top+'px';
+  const close=()=>{pop.remove();back.remove();};
+  back.onclick=close;
+  return {pop,close};
+}
+
+/* ---- status change: anchored popover at the pill ---- */
+function openStatusPicker(anchor,id){
+  const s=state.shots.find(x=>x.id===id); if(!s) return;
+  const rows=STATUSES.map(o=>`<button class="poprow" data-v="${o.id}"><span class="sw" style="background:${o.color}"></span>${o.label}${o.id===s.status?`<span class="ck">${CHECK}</span>`:''}</button>`).join('');
+  const {pop,close}=openPopover(anchor,rows);
+  pop.querySelectorAll('.poprow').forEach(b=>b.onclick=()=>{
+    s.status=b.dataset.v; touch(s); persist(); close();
+    if(ui.sort==='status'||filter.statuses.size) render(); else refreshCard(id);
+  });
+}
+
+/* ---- filter: anchored popover at the Filter button, same style as status ---- */
+function updateFilterBadge(){const b=document.getElementById('fcount');const n=filter.statuses.size+filter.prios.size;b.textContent=n;b.classList.toggle('on',n>0);}
+document.getElementById('filterBtn').onclick=()=>{
+  const btn=document.getElementById('filterBtn');
+  const prioLabel=p=>p===0?'no stars':'★'.repeat(p);
+  const build=()=>STATUSES.map(s=>`<button class="poprow ${filter.statuses.has(s.id)?'':'off'}" data-s="${s.id}"><span class="sw" style="background:${s.color}"></span>${s.label}${filter.statuses.has(s.id)?`<span class="ck">${CHECK}</span>`:''}</button>`).join('')
+    +`<div class="pop-sep"></div>`
+    +[3,2,1,0].map(p=>`<button class="poprow ${filter.prios.has(p)?'':'off'}" data-p="${p}"><span style="color:var(--s-idea);font-size:12px;width:42px;flex:none">${prioLabel(p)}</span>${filter.prios.has(p)?`<span class="ck">${CHECK}</span>`:''}</button>`).join('')
+    +`<div class="pop-sep"></div><button class="poprow clear" data-clear>clear all</button>`;
+  const {pop}=openPopover(btn,build());
+  const rewire=()=>{
+    pop.querySelectorAll('.poprow[data-s]').forEach(b=>b.onclick=()=>{
+      const id=b.dataset.s; filter.statuses.has(id)?filter.statuses.delete(id):filter.statuses.add(id);
+      pop.innerHTML=build(); rewire(); updateFilterBadge(); render();
+    });
+    pop.querySelectorAll('.poprow[data-p]').forEach(b=>b.onclick=()=>{
+      const p=+b.dataset.p; filter.prios.has(p)?filter.prios.delete(p):filter.prios.add(p);
+      pop.innerHTML=build(); rewire(); updateFilterBadge(); render();
+    });
+    pop.querySelector('[data-clear]').onclick=()=>{filter.statuses.clear();filter.prios.clear();pop.innerHTML=build();rewire();updateFilterBadge();render();};
+  };
+  rewire();
+};
+
+/* mood */
+function renderMood(){
+  const m=document.getElementById('moodView');
+  const all=[];
+  state.shots.forEach(s=>s.outputImages.forEach(src=>all.push({src,name:s.name||s.id})));
+  if(!all.length){m.innerHTML=`<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><h3>No output images yet</h3><div>Add output images to your shots and they gather here.</div></div>`;return;}
+  for(let i=all.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[all[i],all[j]]=[all[j],all[i]];}
+  m.innerHTML=`<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center">
+      <span class="meta">${all.length} output images</span>
+      <button class="btn" id="shuf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Shuffle</button>
+    </div>`
+    + all.map(x=>`<div class="mtile"><img src="${esc(x.src)}" data-src="${esc(x.src)}" loading="lazy"><span class="cap">${esc(x.name)}</span></div>`).join('');
+  m.querySelector('#shuf').onclick=renderMood;
+  m.querySelectorAll('.mtile img').forEach(img=>img.onclick=()=>lightbox(img.dataset.src));
+}
+function lightbox(src){const el=document.createElement('div');el.className='lightbox';el.innerHTML=`<img src="${esc(src)}">`;el.onclick=()=>el.remove();document.body.appendChild(el);}
+
+/* add shot */
+document.getElementById('addBtn').onclick=()=>{
+  const s=normalize({id:uid(),name:'',status:'idea',functions:'',actions:'',elements:'',interactions:'',latestPrompt:'',url:'',comments:'',promptImages:[],outputImages:[]});
+  touch(s); state.shots.unshift(s); expanded.add(s.id); persist();
+  ui.sort='manual'; document.getElementById('sort').value='manual'; save(LS_UI,ui);
+  render(); const nc=document.querySelector(`.card[data-id="${s.id}"]`); if(nc&&nc.scrollIntoView)nc.scrollIntoView({behavior:'smooth',block:'center'});
+};
+
+/* settings + github sync */
+document.getElementById('cfgBtn').onclick=()=>{
+  const inner=`
+    <label>Board file</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-export><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Export .json</button>
+      <button class="btn" data-import><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Import .json</button>
+    </div>
+    <div class="hint">Export downloads your whole board. Import loads a board file (e.g. one generated for you) — it replaces the current board, so export first if you want a backup.</div>
+    <div class="pop-sep" style="margin:16px 0"></div>
+    <label>Owner</label><input id="c_owner" value="${esc(cfg.owner)}" placeholder="your-github-username">
+    <label>Repository</label><input id="c_repo" value="${esc(cfg.repo)}" placeholder="my-content-pipeline">
+    <label>Branch</label><input id="c_branch" value="${esc(cfg.branch)}" placeholder="main">
+    <label>Data file path</label><input id="c_path" value="${esc(cfg.path)}" placeholder="data/shots.json">
+    <label>Personal access token</label><input id="c_token" value="${esc(cfg.token)}" placeholder="github_pat_…">
+    <div class="hint">GitHub sync is optional — the board saves locally on its own. Use a fine-grained token scoped to this one repo with Contents: read &amp; write. Stored only in this browser, sent only to api.github.com.</div>`;
+  const {sh,close}=openSheet('Settings',inner,`<button class="btn" data-x2>Cancel</button><button class="btn pri" data-ok>Save</button>`);
+  sh.querySelector('[data-export]').onclick=()=>exportBoard();
+  sh.querySelector('[data-import]').onclick=()=>importBoard(close);
+  sh.querySelector('[data-x2]').onclick=close;
+  sh.querySelector('[data-ok]').onclick=()=>{const g=id=>sh.querySelector('#'+id).value.trim();
+    cfg={owner:g('c_owner'),repo:g('c_repo'),branch:g('c_branch')||'main',path:g('c_path')||'data/shots.json',token:g('c_token')};
+    save(LS_CFG,cfg);setDot(cfg.token&&cfg.repo?'idle':'cfg');close();toast('Settings saved');};
+};
+function setDot(s){const d=document.getElementById('syncDot');d.className='dot'+(s==='ok'?' on':s==='err'?' err':'');d.title={ok:'Synced',err:'Sync error',idle:'Connected',cfg:'Add settings'}[s]||''}
+function exportBoard(){
+  const blob=new Blob([JSON.stringify({shots:state.shots,updatedAt:new Date().toISOString()},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shots.json';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href); toast('Board exported');
+}
+function importBoard(done){
+  const f=document.createElement('input'); f.type='file'; f.accept='application/json,.json';
+  f.onchange=e=>{const file=e.target.files[0]; if(!file) return;
+    const r=new FileReader();
+    r.onload=()=>{ try{
+      const data=JSON.parse(r.result); const shots=Array.isArray(data)?data:data.shots;
+      if(!Array.isArray(shots)) throw new Error('No shots array found');
+      if(state.shots.length && !confirm(`Replace the current board (${state.shots.length} shots) with ${shots.length} imported shots?`)) return;
+      state.shots=shots.map(normalize); state.sha=null; persist(); render();
+      if(done) done(); toast('Imported '+state.shots.length+' shots');
+    }catch(err){ toast('Import failed: '+err.message); } };
+    r.readAsText(file);
+  };
+  f.click();
+}
+function ghApi(){if(!cfg.owner||!cfg.repo||!cfg.token)throw new Error('Add owner, repo and token in settings first.');return `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`}
+function hd(){return {Authorization:`Bearer ${cfg.token}`,Accept:'application/vnd.github+json'}}
+const enc=s=>btoa(unescape(encodeURIComponent(s))),dec=s=>decodeURIComponent(escape(atob(s)));
+async function pull(silent){try{
+  const r=await fetch(`${ghApi()}?ref=${cfg.branch}&t=${Date.now()}`,{headers:hd()});
+  if(r.status===404){if(!silent)toast('No data file yet — Push to create it');setDot('idle');return;}
+  if(!r.ok)throw new Error('GitHub '+r.status);
+  const j=await r.json(),data=JSON.parse(dec(j.content));
+  state.shots=(data.shots||[]).map(normalize);state.sha=j.sha;persist();render();if(view==='mood')renderMood();
+  setDot('ok');if(!silent)toast('Pulled '+state.shots.length+' shots');
+}catch(e){setDot('err');if(!silent)toast(e.message)}}
+async function push(){try{setDot('idle');
+  try{const h=await fetch(`${ghApi()}?ref=${cfg.branch}&t=${Date.now()}`,{headers:hd()});if(h.ok)state.sha=(await h.json()).sha;else if(h.status===404)state.sha=null;}catch{}
+  const body={message:`Update shot board (${state.shots.length} shots)`,content:enc(JSON.stringify({shots:state.shots,updatedAt:new Date().toISOString()},null,2)),branch:cfg.branch};
+  if(state.sha)body.sha=state.sha;
+  const r=await fetch(ghApi(),{method:'PUT',headers:{...hd(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error('GitHub '+r.status+' — '+(await r.text()).slice(0,80));
+  state.sha=(await r.json()).content.sha;setDot('ok');toast('Pushed to GitHub ✓');
+}catch(e){setDot('err');toast(e.message)}}
+document.getElementById('loadBtn').onclick=()=>pull(false);
+document.getElementById('saveBtn').onclick=()=>push();
+</script>
+</body>
+</html>
