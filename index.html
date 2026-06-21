@@ -259,7 +259,12 @@
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SB_URL="https://sjjktpnpfdwolihydbdh.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqamt0cG5wZmR3b2xpaHlkYmRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNTIyNjUsImV4cCI6MjA5NzYyODI2NX0.Ig8ikqKYkiTVLJDrlkLZk_6HgE7gLKmOQK-89SWd2Ts";
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const SB_BUCKET="flames";
 const STATUSES = [
   {id:'idea',   label:'idea',   color:'var(--s-idea)'},
   {id:'prompt', label:'prompt', color:'var(--s-prompt)'},
@@ -288,12 +293,102 @@ let filter={q:'',statuses:new Set(),prios:new Set()};
 let view='board';
 let expanded=new Set();
 
-function persist(){save(LS_DATA,{shots:state.shots})}
+/* ---- Supabase data layer ---- */
+let _saveTimer=null, _dirty=new Set();
+function persist(){
+  save(LS_DATA,{shots:state.shots});           // local mirror (instant, offline-safe)
+  if(_pendingDirtyAll){ syncAll(); _pendingDirtyAll=false; return; }
+  clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(flushDirty,600);
+}
+let _pendingDirtyAll=false;
+function markDirty(id){ if(id) _dirty.add(id); }
+
+// push one shot's scalar fields to Supabase
+async function pushShot(s){
+  try{
+    await sb.from('shots').upsert({
+      id:s.id, name:s.name||'', status:s.status||'idea', priority:s.priority||0,
+      functions:s.functions||'', actions:s.actions||'', elements:s.elements||'',
+      interactions:s.interactions||'', latest_prompt:s.latestPrompt||'',
+      url:s.url||'', comments:s.comments||''
+    });
+  }catch(e){ console.warn('pushShot',s.id,e); }
+}
+async function flushDirty(){
+  const ids=[..._dirty]; _dirty.clear();
+  for(const id of ids){ const s=state.shots.find(x=>x.id===id); if(s) await pushShot(s); }
+}
+// full sync: upsert all shots + images (used after structural changes)
+async function syncAll(){
+  for(const s of state.shots){ await pushShot(s); await syncImages(s); }
+}
+// sync a shot's image rows (prompt + output) to shot_images
+async function syncImages(s){
+  try{
+    await sb.from('shot_images').delete().eq('shot_id',s.id);
+    const rows=[];
+    (s.promptImages||[]).forEach((u,i)=>rows.push({shot_id:s.id,url:u,kind:'prompt',position:i}));
+    (s.outputImages||[]).forEach((u,i)=>rows.push({shot_id:s.id,url:u,kind:'output',position:i}));
+    if(rows.length) await sb.from('shot_images').insert(rows);
+  }catch(e){ console.warn('syncImages',s.id,e); }
+}
+// upload a File to Storage, return public URL
+async function uploadToStorage(shotId,file){
+  const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+  const path=`${shotId}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.${ext}`;
+  const {error}=await sb.storage.from(SB_BUCKET).upload(path,file,{upsert:true,contentType:file.type});
+  if(error){ console.warn('upload',error); return null; }
+  return sb.storage.from(SB_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+// upload a base64 data-URI to Storage (used by S001 migrator), return public URL
+async function uploadDataURI(shotId,dataURI,idx){
+  const m=/^data:(image\/\w+);base64,(.+)$/s.exec(dataURI); if(!m) return null;
+  const mime=m[1], ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[mime]||'jpg';
+  const bin=atob(m[2]); const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  const blob=new Blob([arr],{type:mime});
+  const path=`${shotId}/prompt-${idx+1}.${ext}`;
+  const {error}=await sb.storage.from(SB_BUCKET).upload(path,blob,{upsert:true,contentType:mime});
+  if(error){ console.warn('uploadDataURI',error); return null; }
+  return sb.storage.from(SB_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+// load full state from Supabase
+async function loadFromSupabase(){
+  const {data:shots,error}=await sb.from('shots').select('*').order('id');
+  if(error){ console.warn('loadFromSupabase',error); return null; }
+  const {data:imgs}=await sb.from('shot_images').select('*').order('position');
+  return shots.map(p=>normalize({
+    id:p.id, name:p.name, status:p.status, priority:p.priority,
+    functions:p.functions, actions:p.actions, elements:p.elements,
+    interactions:p.interactions, latestPrompt:p.latest_prompt,
+    url:p.url, comments:p.comments, updatedAt:p.updated_at,
+    promptImages:(imgs||[]).filter(i=>i.shot_id===p.id&&i.kind==='prompt').map(i=>i.url),
+    outputImages:(imgs||[]).filter(i=>i.shot_id===p.id&&i.kind==='output').map(i=>i.url)
+  }));
+}
+// one-time: migrate any base64 images still embedded in local data → Storage
+async function migrateEmbeddedImages(){
+  let moved=0;
+  for(const s of state.shots){
+    for(const g of ['promptImages','outputImages']){
+      const arr=s[g]||[];
+      for(let i=0;i<arr.length;i++){
+        if(typeof arr[i]==='string' && arr[i].startsWith('data:image')){
+          const url=await uploadDataURI(s.id,arr[i],i);
+          if(url){ arr[i]=url; moved++; }
+        }
+      }
+    }
+    if(moved) await syncImages(s);
+  }
+  if(moved){ toast(`Moved ${moved} image${moved>1?'s':''} to cloud`); persist(); render(); }
+}
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const statusOf=id=>STATUSES.find(s=>s.id===id)||STATUSES[0];
 const statusIdx=id=>{const i=STATUSES.findIndex(s=>s.id===id);return i<0?99:i};
 function uid(){const ns=state.shots.map(s=>parseInt((s.id||'').replace(/\D/g,''))||0);return 'S'+String((ns.length?Math.max(...ns):0)+1).padStart(3,'0')}
-function touch(s){s.updatedAt=new Date().toISOString()}
+function touch(s){s.updatedAt=new Date().toISOString(); if(s&&s.id) _dirty.add(s.id);}
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
 function normalize(s){
   if(!s.promptImages && !s.outputImages){s.promptImages=s.images||[];s.outputImages=[];}
@@ -305,19 +400,18 @@ function normalize(s){
 }
 
 /* boot */
-state.shots=(load(LS_DATA,{shots:[]}).shots||[]).map(normalize);
+state.shots=(load(LS_DATA,{shots:[]}).shots||[]).map(normalize);   // show local mirror instantly
 document.getElementById('sort').value=ui.sort;
 updateFilterBadge(); render(); setView('board'); enableDrag();
-setDot(cfg.token&&cfg.repo?'idle':'cfg');
-/* first-open seed: if board is empty, load bundled data/shots.json */
-if(!state.shots.length){
-  fetch('data/shots.json?t='+Date.now())
-    .then(r=>r.ok?r.json():null)
-    .then(d=>{const sh=d&&(Array.isArray(d)?d:d.shots);
-      if(sh&&sh.length){state.shots=sh.map(normalize);persist();render();}})
-    .catch(()=>{});
-}
-if(cfg.token&&cfg.owner&&cfg.repo) pull(true);
+setDot('idle');
+
+/* primary load: pull everything from Supabase */
+(async()=>{
+  const fresh=await loadFromSupabase();
+  if(fresh){ state.shots=fresh; persist(); render(); setDot('ok'); }
+  // migrate any base64 images that came from the old local data into Storage
+  await migrateEmbeddedImages();
+})();
 
 /* tabs */
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>setView(t.dataset.view));
@@ -451,7 +545,7 @@ function wireEditor(id){
     };
   });
   card.querySelectorAll('.it img').forEach(img=>img.onclick=()=>lightbox(img.dataset.src));
-  card.querySelectorAll('.rm').forEach(b=>b.onclick=()=>{s[b.dataset.grp].splice(+b.dataset.i,1);touch(s);persist();refreshCard(id);});
+  card.querySelectorAll('.rm').forEach(b=>b.onclick=async()=>{s[b.dataset.grp].splice(+b.dataset.i,1);touch(s);await syncImages(s);persist();refreshCard(id);});
   card.querySelectorAll('.addtile').forEach(tile=>{
     const g=tile.dataset.grp;
     tile.onclick=()=>{pendingUpload={id,g};const fi=document.getElementById('fileInput');fi.value='';fi.click();};
@@ -460,10 +554,10 @@ function wireEditor(id){
     tile.ondrop=e=>{e.preventDefault();tile.classList.remove('over');addFiles(s,g,e.dataTransfer.files,()=>refreshCard(id));};
   });
   card.querySelectorAll('.urlin').forEach(inp=>inp.onkeydown=e=>{
-    if(e.key==='Enter'&&inp.value.trim()){s[inp.dataset.grp].push(inp.value.trim());inp.value='';touch(s);persist();refreshCard(id);}
+    if(e.key==='Enter'&&inp.value.trim()){s[inp.dataset.grp].push(inp.value.trim());inp.value='';touch(s);syncImages(s);persist();refreshCard(id);}
   });
   card.querySelector('[data-del]').onclick=()=>{
-    if(confirm('Delete '+s.id+'?')){state.shots=state.shots.filter(x=>x.id!==id);expanded.delete(id);persist();render();}
+    if(confirm('Delete '+s.id+'?')){state.shots=state.shots.filter(x=>x.id!==id);expanded.delete(id);sb.from('shots').delete().eq('id',id);persist();render();}
   };
 }
 let pendingUpload=null;
@@ -471,17 +565,16 @@ document.getElementById('fileInput').onchange=e=>{
   if(pendingUpload){const{id,g}=pendingUpload,s=state.shots.find(x=>x.id===id);if(s)addFiles(s,g,e.target.files,()=>refreshCard(id));}
   pendingUpload=null; e.target.value='';
 };
-function addFiles(s,g,files,cb){
-  let pending=0;
-  [...files].forEach(f=>{
-    if(!f.type || !f.type.startsWith('image/')) return;
-    pending++;
-    const r=new FileReader();
-    r.onload=()=>{s[g].push(r.result);touch(s);persist();if(--pending===0&&cb)cb();};
-    r.onerror=()=>{if(--pending===0&&cb)cb();};
-    r.readAsDataURL(f);
-  });
-  if(pending===0&&cb) cb();
+async function addFiles(s,g,files,cb){
+  const imgs=[...files].filter(f=>f.type&&f.type.startsWith('image/'));
+  if(!imgs.length){ if(cb)cb(); return; }
+  toast(`Uploading ${imgs.length} image${imgs.length>1?'s':''}…`);
+  for(const f of imgs){
+    const url=await uploadToStorage(s.id,f);
+    if(url) s[g].push(url);
+  }
+  touch(s); await syncImages(s); persist();
+  if(cb) cb();
 }
 
 /* ---- whole-card drag reorder: grab anywhere except controls ---- */
@@ -659,29 +752,20 @@ document.getElementById('cfgBtn').onclick=()=>{
       <button class="btn" data-export><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Export .json</button>
       <button class="btn" data-import><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Import .json</button>
     </div>
-    <div class="hint">Export downloads your whole board. Import loads a board file (e.g. one generated for you) — it replaces the current board, so export first if you want a backup.</div>
+    <div class="hint">Export downloads your whole board. Import loads a board file — it replaces the current board, so export first if you want a backup.</div>
     <div class="pop-sep" style="margin:16px 0"></div>
-    <label>Owner</label><input id="c_owner" value="${esc(cfg.owner)}" placeholder="your-github-username">
-    <label>Repository</label><input id="c_repo" value="${esc(cfg.repo)}" placeholder="my-content-pipeline">
-    <label>Branch</label><input id="c_branch" value="${esc(cfg.branch)}" placeholder="main">
-    <label>Data file path</label><input id="c_path" value="${esc(cfg.path)}" placeholder="data/shots.json">
-    <label>Personal access token</label><input id="c_token" value="${esc(cfg.token)}" placeholder="github_pat_…">
-    <div class="hint">GitHub sync is optional — the board saves locally on its own. Use a fine-grained token scoped to this one repo with Contents: read &amp; write. Stored only in this browser, sent only to api.github.com.</div>
-    <div class="pop-sep" style="margin:16px 0"></div>
-    <label>Sync now</label>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" data-pull><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Pull</button>
-      <button class="btn pri" data-push><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Push</button>
+    <label>Cloud (Supabase)</label>
+    <div class="hint">Your board lives in Supabase and syncs automatically with Claude. Every edit saves on its own. Use the buttons below only if something looks out of date.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn" data-reload><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Reload from cloud</button>
+      <button class="btn pri" data-pushall><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Push all to cloud</button>
     </div>`;
-  const {sh,close}=openSheet('Settings',inner,`<button class="btn" data-x2>Cancel</button><button class="btn pri" data-ok>Save</button>`);
+  const {sh,close}=openSheet('Settings',inner,`<button class="btn pri" data-x2>Close</button>`);
   sh.querySelector('[data-export]').onclick=()=>exportBoard();
   sh.querySelector('[data-import]').onclick=()=>importBoard(close);
-  sh.querySelector('[data-pull]').onclick=()=>pull(false);
-  sh.querySelector('[data-push]').onclick=()=>push();
+  sh.querySelector('[data-reload]').onclick=async()=>{toast('Reloading…');const fresh=await loadFromSupabase();if(fresh){state.shots=fresh;persist();render();toast('Reloaded '+fresh.length+' shots');}close();};
+  sh.querySelector('[data-pushall]').onclick=async()=>{toast('Pushing all…');await syncAll();toast('Pushed '+state.shots.length+' shots');close();};
   sh.querySelector('[data-x2]').onclick=close;
-  sh.querySelector('[data-ok]').onclick=()=>{const g=id=>sh.querySelector('#'+id).value.trim();
-    cfg={owner:g('c_owner'),repo:g('c_repo'),branch:g('c_branch')||'main',path:g('c_path')||'data/shots.json',token:g('c_token')};
-    save(LS_CFG,cfg);setDot(cfg.token&&cfg.repo?'idle':'cfg');close();toast('Settings saved');};
 };
 function setDot(s){const d=document.getElementById('syncDot');if(!d)return;d.className='dot'+(s==='ok'?' on':s==='err'?' err':'');d.title={ok:'Synced',err:'Sync error',idle:'Connected',cfg:'Add settings'}[s]||''}
 function exportBoard(){
